@@ -1,0 +1,442 @@
+﻿<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+            
+            #hospitalTable {
+                border-collapse: collapse;
+                width: 100%;
+            }
+    
+            #hospitalTable th,
+            #hospitalTable td {
+                border: 1px solid #ddd;
+                padding: 8px;
+                text-align: center;
+            }
+    
+            #hospitalTable tr:nth-child(even) {
+                background-color: #f2f2f2;
+            }
+    
+            #hospitalTable tr:hover {
+                background-color: #ddd;
+            }
+    
+            #hospitalTable th {
+                padding-top: 12px;
+                padding-bottom: 12px;
+                text-align: center;
+                background-color: rgb(94, 94, 94);
+                color: white;
+            }
+    
+            #loadingMessage {
+                display: none;
+                font-size: 20px;
+                font-weight: bold;
+                color: red;
+            }
+
+           #buttonGroup>button{
+                width: 100px;
+                height: 50px;
+                font-size: 20px;
+                font-weight: bold;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                margin: 10px;
+            }
+
+            .unSelectedButton{
+                background-color: black;
+            }
+
+            .selectedButton{
+                background-color:red;
+            }
+
+            #buttonGroup{
+                text-align: center;
+            }
+
+            #stageSelection{
+                width: 200px;
+                height: 50px;
+                font-size: 20px;
+                font-weight: bold;
+                color: white;
+                background-color: black;
+                border: none;
+                border-radius: 5px;
+                text-align:  center;
+                margin: 10px;
+            }
+    </style>
+</head>
+<body>
+    <div id="buttonGroup">     
+
+        <select id="stageSelection">
+            <option value="서울특별시">서울특별시</option>
+            <option value="부산광역시">부산광역시</option>
+            <option value="대구광역시">대구광역시</option>
+            <option value="인천광역시">인천광역시</option>
+            <option value="광주광역시">광주광역시</option>
+            <option value="대전광역시">대전광역시</option>
+            <option value="울산광역시">울산광역시</option>
+            <option value="세종특별자치시">세종특별자치시</option>
+            <option value="경기도">경기도</option>
+            <option value="강원특별자치도">강원특별자치도</option>
+            <option value="충청북도">충청북도</option>
+            <option value="충청남도">충청남도</option>
+            <option value="전라북도">전라북도</option>
+            <option value="전라남도">전라남도</option>
+            <option value="경상북도">경상북도</option>
+            <option value="경상남도">경상남도</option>
+            <option value="제주특별자치도">제주특별자치도</option>
+        </select>
+        <button id="traumaButton" class="unSelectedButton">외상</button>
+        <button id="injuryButton" class="unSelectedButton">내상</button>
+        <button id="burnButton" class="unSelectedButton">화상</button>
+        <button id="pediatricButton" class="unSelectedButton">소아</button>
+        <button id="infectionButton" class="unSelectedButton">감염</button>
+        <button id="generalButton" class="unSelectedButton">일반</button>
+    </div>
+
+    <div id="loadingMessage" style="display: none; text-align: center;">데이터를 불러오는 중...</div>
+
+    <table id="hospitalTable"></table>
+    <script>
+        function xmlToJson(xml) {
+            var obj = {};
+            if (xml.nodeType == 1) {
+                if (xml.attributes.length > 0) {
+                    obj["@attributes"] = {};
+                    for (var j = 0; j < xml.attributes.length; j++) {
+                        var attribute = xml.attributes.item(j);
+                        obj["@attributes"][attribute.nodeName] = attribute.nodeValue;
+                    }
+                }
+            } else if (xml.nodeType == 3) {
+                obj = xml.nodeValue;
+            }
+            var textNodes = [].slice.call(xml.childNodes).filter(function (node) {
+                return node.nodeType === 3;
+            });
+
+            if (xml.hasChildNodes() && xml.childNodes.length === textNodes.length) {
+                obj = [].slice.call(xml.childNodes).reduce(function (text, node) {
+                    return text + node.nodeValue;
+                }, "");
+            } else if (xml.hasChildNodes()) {
+                for (var i = 0; i < xml.childNodes.length; i++) {
+                    var item = xml.childNodes.item(i);
+                    var nodeName = item.nodeName;
+                    if (typeof obj[nodeName] == "undefined") {
+                        obj[nodeName] = xmlToJson(item);
+                    } else {
+                        if (typeof obj[nodeName].push == "undefined") {
+                            var old = obj[nodeName];
+                            obj[nodeName] = [];
+                            obj[nodeName].push(old);
+                        }
+                        obj[nodeName].push(xmlToJson(item));
+                    }
+                }
+            }
+            return obj;
+        }
+
+        let column_mapping = {
+            "dutyName": "병원명",
+            "dutyTel3": "병원전화번호",
+            "resultCode": "결과코드",
+            "resultMag": "결과메시지",
+            "rnum": "일련번호",
+            "hpid": "기관코드",
+            "phpid": "기관코드",
+            "hvidate": "입력일시",
+            "hvec": "일반",
+            "hvoc": "[기타] 수술실",
+            "hvcc": "[중환자실] 신경과",
+            "hvncc": "[중환자실] 신생아",
+            "hvccc": "[중환자실] 흉부외과",
+            "hvicc": "[중환자실] 일반",
+            "hvgc": "[입원실] 일반",
+            "hvdnm": "당직의",
+            "hvctayn": "CT가용(가/부)",
+            "hvmriayn": "MRI가용(가/부)",
+            "hvangioayn": "혈관촬영기가용(가/부)",
+            "hvventiayn": "인공호흡기가용(가/부)",
+            "hvventisoayn": "인공호흡기 조산아가용(가/부)",
+            "hvincuayn": "인큐베이터가용(가/부)",
+            "hvcrrtayn": "CRRT가용(가/부)",
+            "hvecmoayn": "ECMO가용(가/부)",
+            "hvoxyayn": "고압산소치료기가용(가/부)",
+            "hvhypoayn": "중심체온조절유도기(가/부)",
+            "hvamyn": "구급차가용여부",
+            "hv1": "응급실 당직의 직통연락처",
+            "hv2": "[중환자실] 내과",
+            "hv3": "[중환자실] 외과",
+            "hv4": "외과입원실(정형외과)",
+            "hv5": "신경과입원실",
+            "hv6": "[중환자실] 신경외과",
+            "hv7": "약물중환자",
+            "hv8": "[중환자실] 화상",
+            "hv9": "[중환자실] 외상",
+            "hv10": "VENTI(소아)",
+            "hv11": "인큐베이터(보육기)",
+            "hv12": "소아당직의 직통연락처",
+            "hv13": "격리진료구역 음압격리병상",
+            "hv14": "격리진료구역 일반격리병상",
+            "hv15": "소아음압격리",
+            "hv16": "소아일반격리",
+            "hv17": "[응급전용] 중환자실 음압격리",
+            "hv18": "[응급전용] 중환자실 일반격리",
+            "hv19": "[응급전용] 입원실 음압격리",
+            "hv21": "[응급전용] 입원실 일반격리",
+            "hv22": "감염병 전담병상 중환자실",
+            "hv23": "감염병 전담병상 중환자실 내 음압격리병상",
+            "hv24": "[감염] 중증 병상",
+            "hv25": "[감염] 준-중증 병상",
+            "hv26": "[감염] 중등증 병상",
+            "hv27": "코호트 격리",
+            "hv28": "소아",
+            "hv29": "응급실 음압 격리 병상",
+            "hv30": "응급실 일반 격리 병상",
+            "hv31": "[응급전용] 중환자실",
+            "hv32": "[중환자실] 소아",
+            "hv33": "[응급전용] 소아중환자실",
+            "hv34": "[중환자실] 심장내과",
+            "hv35": "[중환자실] 음압격리",
+            "hv36": "[응급전용] 입원실",
+            "hv37": "[응급전용] 소아입원실",
+            "hv38": "[입원실] 외상전용",
+            "hv39": "[기타] 외상전용 수술실",
+            "hv40": "[입원실] 정신과 폐쇄병동",
+            "hv41": "[입원실] 음압격리",
+            "hv42": "[기타] 분만실",
+            "hv43": "[기타] 화상전용처치실",
+            "dutyname": "기관명",
+            "dutytel3": "응급실전화",
+            "HVS01": "일반_기준",
+            "HVS02": "소아_기준",
+            "HVS03": "응급실 음압 격리 병상_기준",
+            "HVS04": "응급실 일반 격리 병상_기준",
+            "HVS05": "[응급전용] 중환자실_기준",
+            "HVS06": "[중환자실] 내과_기준",
+            "HVS07": "[중환자실] 외과_기준",
+            "HVS08": "[중환자실] 신생아_기준",
+            "HVS09": "[중환자실] 소아_기준",
+            "HVS10": "[응급전용] 소아중환자실_기준",
+            "HVS11": "[중환자실] 신경과_기준",
+            "HVS12": "[중환자실] 신경외과_기준",
+            "HVS13": "[중환자실] 화상_기준",
+            "HVS14": "[중환자실] 외상_기준",
+            "HVS15": "[중환자실] 심장내과_기준",
+            "HVS16": "[중환자실] 흉부외과_기준",
+            "HVS17": "[중환자실] 일반_기준",
+            "HVS18": "[중환자실] 음압격리_기준",
+            "HVS19": "[응급전용] 입원실_기준",
+            "HVS20": "[응급전용] 소아입원실_기준",
+            "HVS21": "[입원실] 외상전용_기준",
+            "HVS22": "[기타] 수술실_기준",
+            "HVS23": "[기타] 외상전용 수술실_기준",
+            "HVS24": "[입원실] 정신과 폐쇄병동_기준",
+            "HVS25": "[입원실] 음압격리_기준",
+            "HVS26": "[기타] 분만실_기준",
+            "HVS27": "CT_기준",
+            "HVS28": "MRI_기준",
+            "HVS29": "혈관촬영기_기준",
+            "HVS30": "인공호흡기 일반_기준",
+            "HVS31": "인공호흡기 조산아_기준",
+            "HVS32": "인큐베이터_기준",
+            "HVS33": "CRRT_기준",
+            "HVS34": "ECMO_기준",
+            "HVS35": "중심체온조절유도기_기준",
+            "HVS36": "[기타] 화상전용처치실_기준",
+            "HVS37": "고압산소치료기_기준",
+            "HVS38": "[입원실] 일반_기준",
+            "HVS46": "격리진료구역 음압격리_기준",
+            "HVS47": "격리진료구역 일반격리_기준",
+            "HVS48": "소아음압격리_기준",
+            "HVS49": "소아일반격리_기준",
+            "HVS50": "[응급전용] 중환자실 음압격리_기준",
+            "HVS51": "[응급전용] 중환자실 일반격리_기준",
+            "HVS52": "[응급전용] 입원실 음압격리_기준",
+            "HVS53": "[응급전용] 입원실 일반격리_기준",
+            "HVS54": "감염병 전담병상 중환자실_기준",
+            "HVS55": "감염병 전담병상 중환자실 내 음압격리병상_기준",
+            "HVS56": "[감염] 중증 병상_기준",
+            "HVS57": "[감염] 준-중증 병상_기준",
+            "HVS58": "[감염] 중등증 병상_기준",
+            "HVS59": "코호트 격리_기준"
+        }
+
+        async function fetchData(stage) {
+            try {
+                let encoding = 'uuj02jU2YYli77jYimknQUTk6ub1rIBto2PvpTDymZFsuRn26DRR5lA2BgOK9Fg1sCRILukUYh4pZY%2FhIghadg%3D%3D'
+                let decoding = 'uuj02jU2YYli77jYimknQUTk6ub1rIBto2PvpTDymZFsuRn26DRR5lA2BgOK9Fg1sCRILukUYh4pZY/hIghadg=='
+
+                const url = 'http://apis.data.go.kr/B552657/ErmctInfoInqireService/getEmrrmRltmUsefulSckbdInfoInqire'
+
+                let params = {
+                    'serviceKey': decoding,
+                    'STAGE1': stage,
+                    'pageNo': '1',
+                    'numOfRows': '409'
+                };
+
+                const queryString = Object.keys(params).map(key => `${key}=${encodeURIComponent(params[key])}`).join('&');
+                const response = await fetch(`${url}?${queryString}`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+
+                const text = await response.text();
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(text, 'application/xml');
+                const jsonData = xmlToJson(xmlDoc);
+
+
+                if (jsonData.response && jsonData.response.body && jsonData.response.body.items && jsonData.response.body.items.item) {
+                    const hospitalData = jsonData.response.body.items.item;
+                    const firstRow = hospitalData[0];
+                    const columnNames = Object.keys(firstRow);
+                    //console.log('열의 정보:', columnNames);
+
+                    return hospitalData;
+                } else {
+                    throw new Error('No data found in the response.');
+                }
+
+            } catch (error) {
+                console.error('데이터를 가져오는 중 오류 발생:', error);
+                throw error;
+            }
+        }
+
+        function displayData(hospitalData, relevantColumns) {
+            const table = document.querySelector('#hospitalTable');
+
+            // 테이블 초기화
+            table.innerHTML = '';
+
+            // 헤더 생성
+            const headerRow = document.createElement('tr');
+            relevantColumns.forEach(columnName => {
+                const headerCell = document.createElement('th');
+                headerCell.setAttribute('id', columnName);
+                headerCell.textContent = column_mapping[columnName];
+                headerCell.addEventListener('click', function(){
+                    if(this.id=='dutyName') return;
+                    hospitalData.sort(function (a, b) {  
+                        let data1 = a[columnName];
+                        let data2 = b[columnName];  
+
+                        if(data1 == "Y") data1 = 1;
+                        else if(data1 == "N") data1 = -1;
+
+                        if(data2 == "Y") data2 = 1;
+                        else if(data2 == "N") data2 = -1;
+
+                        return Number(data2)-Number(data1);
+                    });
+                    displayData(hospitalData, relevantColumns);
+                });
+                headerRow.appendChild(headerCell);
+            });
+            table.appendChild(headerRow);
+
+            // 데이터 표시
+            hospitalData.forEach(hospital => {
+                const dataRow = document.createElement('tr');
+
+                relevantColumns.forEach(columnName => {
+                    const dataCell = document.createElement('td');
+                    dataCell.textContent = hospital[columnName] || '';
+                    dataRow.appendChild(dataCell);
+                });
+
+                table.appendChild(dataRow);
+            });
+        }     
+
+        function showLoadingMessage() {
+            document.getElementById('loadingMessage').style.display = 'block';
+        }
+
+        function hideLoadingMessage() {
+            document.getElementById('loadingMessage').style.display = 'none';
+        }
+
+        let selectedColumns = []
+        async function handleButtonClick(keyword) {
+            showLoadingMessage();
+            saveKeyword = keyword;
+            let stage = document.getElementById("stageSelection").value;
+            document.querySelectorAll('#buttonGroup>button').forEach((button) => {
+                if(button.textContent == keyword) button.classList.add('selectedButton');
+                else button.classList.remove('selectedButton');
+            });
+            
+            try {
+                const hospitalData = await fetchData(stage);
+                if (keyword === '외상') {
+                    selectedColumns = ['dutyName','dutyTel3', 'hv3', 'hv6', 'hvccc', 'hv9'];
+                } else if (keyword === '내상') {
+                    selectedColumns = ['dutyName', 'dutyTel3', 'hv2', 'hv4', 'hvcc', 'hv34'];
+                } else if (keyword === '화상') {
+                    selectedColumns = ['dutyName', 'dutyTel3', 'hv8'];
+                } else if (keyword === '소아') {
+                    selectedColumns = ['dutyName', 'dutyTel3', 'hv10', 'hv11', 'hvncc','hv33', 'hv37'];
+                } else if (keyword === '감염') {
+                    selectedColumns = ['dutyName', 'dutyTel3', 'hv24', 'hv25', 'hv26'];
+                } else {
+                    selectedColumns = ['dutyName', 'dutyTel3', 'hvicc']
+                }
+
+                const filteredData = hospitalData.map(hospital => {
+                    const filteredHospital = {};
+                    selectedColumns.forEach(columnName => {
+                        // 빈 값이면 기본값 사용 (예: 빈 문자열)
+                        filteredHospital[columnName] = hospital[columnName] !== undefined ? hospital[columnName] : '0';
+                    });
+                    return filteredHospital;
+                });
+
+                displayData(filteredData, selectedColumns);
+
+            } catch (error) {
+                console.error('데이터 처리 중 오류 발생:', error);
+            } finally {
+                hideLoadingMessage();
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", function () {
+            document.getElementById("traumaButton").addEventListener("click", () => handleButtonClick('외상'));
+            document.getElementById("injuryButton").addEventListener("click", () => handleButtonClick('내상'));
+            document.getElementById("burnButton").addEventListener("click", () => handleButtonClick('화상'));
+            document.getElementById("pediatricButton").addEventListener("click", () => handleButtonClick('소아'));
+            document.getElementById("infectionButton").addEventListener("click", () => handleButtonClick('감염'));
+            document.getElementById("generalButton").addEventListener("click", () => handleButtonClick('일반'));
+        });
+
+        // 페이지 뜨면서 외상 버튼 누른 것 처럼
+        let saveKeyword = '외상'; 
+        handleButtonClick(saveKeyword);
+        
+        // 지역이 바뀌면 데이터를 바로 가져오기
+        document.getElementById("stageSelection").addEventListener("change", () => handleButtonClick(saveKeyword)); 
+    </script>
+</body>
+</html>
